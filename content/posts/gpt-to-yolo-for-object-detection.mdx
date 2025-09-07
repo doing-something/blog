@@ -139,3 +139,7 @@ homekeeper-api/
 4. 기존 구조 유지 - DetectedItem 구조를 그대로 유지하여 프론트엔드 변경 없이 성능만 개선한다.
 
 이 계획을 프로젝트에 적용한 후, 실제 구현 결과와 성능 개선 사항에 대해 추가로 정리할 예정이다.
+
+---
+
+**English Summary:** Switching from GPT-4o-mini to YOLO for faster object detection in Homekeeper, an AI-based item registration service. The original GPT-only approach was too slow (5-10 seconds), so implementing a hybrid pipeline: YOLO for fast object detection (0.3s) + GPT for structured JSON conversion (1-2s). This reduces total processing time to 1-2 seconds while maintaining the same output format and improving accuracy.
