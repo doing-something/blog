@@ -1,6 +1,7 @@
 import './globals.css'
 import type { Metadata } from 'next'
 import Navigation from '@/components/Navigation'
+import GoogleAnalytics from '../components/GoogleAnalytics'
 
 export const metadata: Metadata = {
   title: { default: '개발자의 기록', template: '%s | 개발자의 기록' },
@@ -36,6 +37,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
+      <head>
+        <GoogleAnalytics />
+      </head>
       <body className="antialiased min-h-screen bg-white text-slate-900">
         <div className="max-w-[672px] mx-auto py-4 px-4">
           <header>
