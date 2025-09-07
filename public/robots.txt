@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://blog-zeta-sandy-84.vercel.app/sitemap.xml
+Sitemap: https://skyparci.vercel.app/sitemap.xml
