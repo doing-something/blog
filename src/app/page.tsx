@@ -13,7 +13,7 @@ export default function BlogIndex() {
       {posts.map((post) => (
         <article key={post.slug}>
           <Link href={post.url}>
-            <h2>{post.title}</h2>
+            <h2 className="text-lg">{post.title}</h2>
           </Link>
           <p>{post.description}</p>
         </article>

@@ -41,7 +41,7 @@ export default function RootLayout({
         <GoogleAnalytics />
       </head>
       <body className="antialiased min-h-screen bg-white text-slate-900">
-        <div className="max-w-[672px] mx-auto py-4 px-4">
+        <div className="max-w-[672px] mx-auto py-4 px-6">
           <header>
             <Navigation />
           </header>
