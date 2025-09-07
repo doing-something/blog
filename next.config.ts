@@ -1,7 +1,8 @@
-import type { NextConfig } from "next";
+import withMDX from '@next/mdx'
+import { withContentlayer } from 'next-contentlayer'
 
-const nextConfig: NextConfig = {
-  /* config options here */
-};
+const nextConfig = {
+  experimental: { mdxRs: true },
+}
 
-export default nextConfig;
+export default withContentlayer(withMDX()(nextConfig))
