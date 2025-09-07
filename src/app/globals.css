@@ -9,6 +9,12 @@ html {
     Noto Sans, sans-serif;
 }
 
+/* 한글 텍스트 줄바꿈 개선 */
+body {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
 /* 링크 기본 스타일 */
 a {
   color: inherit;
