@@ -8,7 +8,7 @@ export default function AboutPage() {
       </p>
       <p className="text-gray-600 text-sm">
         A blog where I document lessons learned from solving problems
-        encountered in work side and projects.
+        encountered in work and side projects.
       </p>
 
       <p>
