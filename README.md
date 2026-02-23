@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Blog
 
-## Getting Started
+Next.js(App Router) + Contentlayer 기반 블로그입니다.  
+이 프로젝트는 별도 서버 없이 정적 사이트로 빌드되어 GitHub Pages로 배포됩니다.
 
-First, run the development server:
+## Local Development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Build
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+정상 빌드 시 정적 결과물은 `out/` 디렉터리에 생성됩니다.
 
-## Learn More
+## Deploy to GitHub Pages
 
-To learn more about Next.js, take a look at the following resources:
+1. GitHub 저장소에서 `Settings > Pages`로 이동
+2. `Build and deployment`의 `Source`를 `GitHub Actions`로 선택
+3. `main` 브랜치에 푸시
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`.github/workflows/deploy-pages.yml` 워크플로가 실행되어 `out/`를 자동 배포합니다.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Notes
 
-## Deploy on Vercel
+- 프로젝트 저장소명이 `username.github.io`가 아니면, 배포 시 자동으로 `basePath`가 적용됩니다.
+- 정적 호스팅 특성상 서버 런타임 기능(SSR/ISR/API Routes)은 사용할 수 없습니다.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Tech Stack
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Next.js 15
+- React 19
+- Contentlayer + MDX
+- Tailwind CSS
+
+## Reference
+
+- Next.js Static Exports: https://nextjs.org/docs/app/building-your-application/deploying/static-exports
+- GitHub Pages with Actions: https://docs.github.com/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages
