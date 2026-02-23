@@ -3,8 +3,6 @@ import type { Metadata } from 'next'
 import { allPosts } from 'contentlayer/generated'
 import { marked } from 'marked'
 
-export const revalidate = 3600
-
 export async function generateStaticParams() {
   return allPosts.filter((p) => !p.draft).map((p) => ({ slug: p.slug }))
 }

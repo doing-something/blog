@@ -1,8 +1,6 @@
 import { allPosts } from 'contentlayer/generated'
 import Link from 'next/link'
 
-export const revalidate = 3600
-
 export default function BlogIndex() {
   const posts = allPosts
     .filter((p) => !p.draft)
