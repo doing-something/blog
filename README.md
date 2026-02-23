@@ -18,6 +18,14 @@ pnpm build
 
 정상 빌드 시 정적 결과물은 `out/` 디렉터리에 생성됩니다.
 
+빌드가 로컬 환경에서 꼬였을 때는 아래 3줄을 기준으로 정리합니다.
+
+```bash
+rm -rf node_modules
+pnpm install --frozen-lockfile
+pnpm build
+```
+
 ## Deploy to GitHub Pages
 
 1. GitHub 저장소에서 `Settings > Pages`로 이동
