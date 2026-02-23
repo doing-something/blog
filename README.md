@@ -6,14 +6,14 @@ Next.js(App Router) + Contentlayer 기반 블로그입니다.
 ## Local Development
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 ## Build
 
 ```bash
-npm run build
+pnpm build
 ```
 
 정상 빌드 시 정적 결과물은 `out/` 디렉터리에 생성됩니다.
