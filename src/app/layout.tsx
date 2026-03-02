@@ -46,7 +46,7 @@ export default function RootLayout({
           <header>
             <Navigation />
           </header>
-          <main>
+          <main className="pb-32">
             <div className="prose">{children}</div>
           </main>
         </div>

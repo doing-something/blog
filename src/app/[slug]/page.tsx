@@ -30,7 +30,7 @@ export default async function PostPage({
   const htmlContent = marked(post.body.raw)
 
   return (
-    <article className="pt-10">
+    <article className="pt-6">
       <h1>{post.title}</h1>
       <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
     </article>
