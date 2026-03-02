@@ -11,9 +11,17 @@ export default function BlogIndex() {
       {posts.map((post) => (
         <article key={post.slug}>
           <Link href={post.url}>
-            <h2 className="text-lg">{post.title}</h2>
+            <h2 className="text-lg mb-0.5">{post.title}</h2>
           </Link>
-          <p>{post.description}</p>
+          <time dateTime={post.date} className="text-sm text-gray-500 dark:text-gray-400 block">
+            {new Date(post.date).toLocaleDateString('ko-KR', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+              timeZone: 'UTC',
+            })}
+          </time>
+          <p className="mt-1">{post.description}</p>
         </article>
       ))}
     </>
