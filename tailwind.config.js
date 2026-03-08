@@ -11,9 +11,9 @@ module.exports = {
         DEFAULT: {
           css: {
             'h1': { marginTop: '0', marginBottom: '0.75em' },
-            'h2': { marginTop: '1.5em', marginBottom: '0.5em' },
-            'h3, h4': { marginTop: '1.25em', marginBottom: '0.5em' },
-            'p, ul, ol': { marginTop: '0.625em', marginBottom: '0.625em' },
+            'h2': { marginTop: '1.5em', marginBottom: '0.75em' },
+            'h3, h4': { marginTop: '1.25em', marginBottom: '0.625em' },
+            'p, ul, ol': { marginTop: '1em', marginBottom: '1em' },
             'li': { marginTop: '0.25em', marginBottom: '0.25em' },
             'blockquote': { marginTop: '0.75em', marginBottom: '0.75em' },
             'pre, table': { marginTop: '0.75em', marginBottom: '0.75em' },
