@@ -45,3 +45,6 @@ next-env.d.ts
 
 # claude code
 .claude/
+
+# openspec changes (writing process artifacts)
+openspec/changes/
