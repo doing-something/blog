@@ -46,5 +46,6 @@ next-env.d.ts
 # claude code
 .claude/
 
-# openspec changes (writing process artifacts)
-openspec/changes/
+# openspec changes (blog post writing process - hide, schema-* changes - expose)
+openspec/changes/*
+!openspec/changes/schema-*/
