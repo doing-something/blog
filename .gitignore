@@ -49,3 +49,6 @@ next-env.d.ts
 # openspec changes (blog post writing process - hide, schema-* changes - expose)
 openspec/changes/*
 !openspec/changes/schema-*/
+!openspec/changes/archive/
+openspec/changes/archive/*
+!openspec/changes/archive/*schema-*/
