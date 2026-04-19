@@ -1,0 +1,220 @@
+---
+title: 'AI와 함께 일하는 팀 협업 구조'
+date: 2026-04-19
+description: 'AI와 나는 한 팀이다. 프로세스와 지식을 함께 공유해야 이 팀이 잘 돌아간다.'
+draft: false
+---
+
+---
+
+## AI 개발 프로세스를 한 곳에서 관리하고 공유한다
+
+이전 포스트에서 개발 프로세스에서의 자동화를 생각하고 있지 않다고 했는데, 아니다. 필요하다.
+한 프로젝트에서 사용하던 설정을 다른 프로젝트에서 쓰고 싶다.
+이 설정은 꾸준히 다듬은 것이라 현 시점에서 내게 가장 잘 맞는다. 하지만 수동으로 파일을 복제하는 건 너무 번거롭다.
+
+AI 에이전틱 개발 프로세스 하네스(OpenSpec + Claude Code/Codex) 설정을 공통 리포로 관리해 여러 프로젝트에서 공유하고 업데이트하고자 한다.
+- 새 프로젝트를 시작할 때 같은 OpenSpec + Claude Code + Codex 설정을 한다.
+- 개선해서 공통 리포에 올리고, 기존에 사용하던 곳에서는 버전 업데이트해서 쓴다.
+
+## 하네스 설계
+
+private Git repo에 하네스 원본을 두고, 각 프로젝트는 sync CLI(동기화 명령)로 필요한 파일을 복사한다.
+
+```
+agentic-openspec-harness/
+  core/
+    openspec/specs/<공통 프로세스 spec>
+    scripts/validate-openspec-change.sh
+    docs/rules/*
+
+  adapters/
+    codex/
+      .codex/skills/openspec-*
+
+    claude-code/
+      .claude/commands/opsx/*
+      .claude/skills/openspec-*
+      .claude/hooks/guard-openspec-artifacts.js
+
+  templates/
+    AGENTS.harness.md
+    openspec-config.base.yaml
+    claude-settings.fragment.json
+
+  policy/
+    openspec-artifact-guard.json
+
+  bin/
+    harness
+```
+
+각 프로젝트에는 아래 파일들이 생긴다. 대부분은 하네스에서 복사하고, 일부는 병합하거나 빈 디렉토리로 만든다.
+
+```
+AGENTS.harness.md
+.codex/skills/openspec-*
+.claude/commands/opsx/*
+.claude/skills/openspec-*
+.claude/hooks/*
+.claude/settings.json  # 기존 설정을 유지하면서 하네스 설정만 합침
+scripts/validate-openspec-change.sh
+docs/rules/*
+.opsx-harness/specs/<공통 프로세스 spec>  # 선택적 reference
+.opsx-harness/overrides/  # 프로젝트별 변형 파일을 두는 빈 디렉토리
+openspec-harness.yaml
+openspec-harness.lock
+```
+
+소비 프로젝트의 `openspec/specs/`에는 앱 도메인 spec만 둔다. 공통 프로세스 spec은 하네스 repo의 원본으로 관리하고, 프로젝트에는 필요 시 `.opsx-harness/specs/`에 읽기용 레퍼런스로만 복사한다.
+
+### init과 sync는 구분
+
+`harness init`은 새 프로젝트에 처음 하네스를 심는 1회 작업이다.
+`AGENTS.harness.md`, Claude/Codex용 파일 묶음, 자동 차단 스크립트, 설정 조각, 설치 기록 파일을 만든다.
+또한 `AGENTS.md`에 `AGENTS.harness.md`를 읽고 따르라는 짧은 참조 문구를 추가한다.
+`AGENTS.md` 전체를 하네스가 관리하지는 않는다.
+`harness sync`는 이미 설치된 프로젝트에서 하네스가 관리하는 파일만 새 버전으로 갱신한다.
+`openspec/config.yaml`, 앱 도메인 spec, `AGENTS.md` 같은 프로젝트가 직접 관리하는 파일은 덮어쓰지 않는다.
+
+### 파일 소유권
+
+#### 하네스가 관리하는 것
+
+- opsx:* workflow 정의
+- Codex skill
+- Claude Code command/skill
+- OpenSpec workflow/spec-review/verify/validate 관련 spec
+- 단, 소비 프로젝트의 `openspec/specs/`에는 넣지 않고 하네스 repo에서 원본을 관리한다. 필요하면 `.opsx-harness/specs/`에 읽기용 reference로만 복사한다.
+- 검증 스크립트
+- 공통 테스트/컴포넌트 규칙
+
+#### 프로젝트가 직접 관리하는 것
+
+- openspec/changes/**
+- 앱 도메인 spec
+- `openspec/config.yaml`은 init 때 없으면 생성하지만, 이후에는 프로젝트 소유 파일로 취급한다.
+- .claude/settings.local.json 같은 개인/로컬 설정
+- 프로젝트 고유 AGENTS 내용
+- `.opsx-harness/overrides/**`: 하네스 관리 파일을 직접 수정하지 않고 프로젝트별 변형 파일을 두는 공간
+
+### Claude Code hook과 settings
+
+Claude Code는 hook으로 `opsx:apply` 중 OpenSpec 문서 수정을 강제 차단할 수 있다.
+규칙 문서만으로는 가드레일이 깨질 수 있으므로, 하네스는 `.claude/hooks/*`와 `.claude/settings.json`의 hook 등록을 함께 관리한다.
+
+단, `.claude/settings.json` 전체를 덮어쓰지 않는다. 하네스는 `claude-settings.fragment.json`을 제공하고, `harness init/sync`가 프로젝트의 기존 `.claude/settings.json`을 유지하면서 하네스가 필요한 항목만 합친다. 프로젝트가 직접 추가한 permissions, MCP, hook 설정은 유지한다.
+`.claude/settings.local.json`은 개인/로컬 설정이므로 하네스가 건드리지 않는다.
+
+### 버전업 플로우
+
+공통 하네스에서 개선
+
+```
+cd ~/workspaces/agentic-openspec-harness
+git commit -m "Improve opsx verify workflow"
+git tag v0.4.0
+```
+
+각 프로젝트에서 적용
+
+```
+cd ~/workspaces/some-project
+pnpm dlx @yourscope/opsx-harness sync --ref v0.4.0
+```
+
+혼자 쓰는 초기 단계에서는 로컬 경로로 실행한다.
+```
+~/workspaces/agentic-openspec-harness/bin/harness sync --ref v0.4.0
+```
+
+openspec-harness.lock이 이전 설치 기록과 hash을 들고 있으므로, 프로젝트에서 하네스 관리 파일을 직접 고친 경우 sync가 충돌로 멈춘다.
+의도적인 프로젝트별 변형은 하네스 관리 파일을 직접 수정하지 않고 `.opsx-harness/overrides/**`에 둔다.
+충돌이 나면 `status`, `diff`, `reset`, `adopt`, `sync --merge` 중 하나로 해결한다.
+
+### 충돌 해결 명령
+
+- `harness status`: 하네스 관리 파일 상태 확인
+- `harness diff <file>`: 로컬 변경과 하네스 버전 차이 확인
+- `harness reset <file>`: 실수로 고친 하네스 관리 파일을 lock 기준으로 복구
+- `harness adopt <file>`: 프로젝트에서 고친 내용을 하네스 원본에 반영할 후보로 추출
+- `harness sync --merge`: 가능한 경우 기존 버전, 로컬 수정, 새 버전을 비교해 병합
+
+## 좋은 팀은 지식도 함께 쌓는다
+
+AI를 활용하는 방법에 신경쓰느라, 이전보다 개발 공부를 소홀히 해왔다.
+그런데 스펙 주도 개발을 하다보니, 내가 아는 게 없으면 AI에 좋은 지시를 하기 어렵겠다는 생각이 들었다.
+최근에는 익숙하지 않은 일을 시작하게 되어, 카메라 화각, 미디어스트림 등을 학습하고 있다. 그러면서 이런 의문이 든다. 이걸 나 혼자 공부하는 게 맞나? AI랑 같이 일하는 건데 우리가 같이 배워야 하는 것 아닌가?
+
+프로세스 하네스는 AI와 내가 같은 방식으로 일하기 위한 장치다. 그런데 좋은 팀은 일하는 방식만 맞추는 게 아니다. 아키텍처와 시스템 설계, CS 기본기, 프레임워크와 라이브러리의 올바른 사용법, 테스트 설계, 보안과 운영, 제품 도메인 등에 대한 이해를 함께 쌓고, 그 지식을 실제 작업 판단에 계속 써야 할 것 같다.
+
+## 지식을 공유한다
+
+### 기본 원칙
+
+Obsidian은 자유롭게 공부하고 생각을 연결하는 데 쓴다.
+GitHub 지식 저장소는 AI와 공유할 정돈된 지식을 모아두는 곳으로 쓴다.
+OpenSpec workflow는 그 지식이 실제 개발 작업에 적용되는 관문으로 쓴다.
+
+1. Obsidian 자유 노트
+2. AI로 knowledge-card 승격
+3. GitHub 지식 저장소에 커밋
+4. OpenSpec change에서 관련 카드 선택
+5. design.md / tasks.md에 적용 방식 기록
+6. apply / verify / retro에서 피드백
+
+### 노트의 수명
+
+모든 공부 노트가 바로 규칙이 되면 안 된다.
+- `study note`: 공부 중 자유롭게 쓴 노트. 생각, 질문, 예제, 불확실한 이해가 섞여 있어도 된다.
+- `knowledge-card`: AI와 함께 작업에 쓸 수 있게 정리한 카드. 핵심 규칙, 적용 기준, 예외, 검증 질문을 포함한다.
+- `project rule`: 특정 프로젝트에서 반복 적용하기로 결정한 규칙. 프로젝트의 `docs/rules/` 또는 OpenSpec artifact로 승격한다.
+
+### 저장소 구조
+
+```
+ai-team-knowledge/
+  inbox/
+  cards/
+  react/
+  tanstack-query/
+  testing/
+  architecture/
+  playbooks/
+  references/
+  knowledge-index.yaml
+  prompts/
+  promote-card.md
+```
+
+- `inbox/`는 후보 노트다.
+- `cards/`와 `playbooks/`만 AI 작업 컨텍스트로 직접 사용한다.
+- `knowledge-index.yaml`은 어떤 작업에서 어떤 카드를 읽을지 정한다.
+
+### OpenSpec과 연결
+
+knowledge-card는 참고 지식이고, OpenSpec spec은 change의 계약이다.
+따라서 knowledge-card를 읽었다는 이유만으로 바로 apply/verify 기준이 되면 안 된다.
+관련 지식은 `opsx:propose` 또는 `opsx:discuss`에서 선택하고, `design.md`에 `Knowledge Context`로 기록한다.
+
+예:
+
+```
+## Knowledge Context
+
+- react/server-state-ownership
+  - 적용: 서버 응답을 local state로 복사하지 않고 TanStack Query cache를 source of truth로 둔다.
+  - validation: API 응답 복사본을 useState로 만들지 않았는지 확인한다.
+```
+
+- `opsx:apply`는 자유롭게 지식 저장소를 계속 검색하지 않는다. `design.md`에 기록된 knowledge-card만 필수 컨텍스트로 읽는다.
+- `opsx:verify`도 spec 준수를 우선한다. knowledge-card는 `design.md` decision과 `tasks.md` validation으로 내려온 경우에만 검증 기준이 된다.
+- `opsx:retro-spec-review`는 반복된 feedback을 보고 새 knowledge-card 후보나 기존 카드 보강 후보를 찾는다.
+
+## 이건 팀 협업 구조다
+
+처음에는 프로세스 공유와 지식 공유를 따로 생각했다. 그런데 하다 보니 결국 같은 문제였다. 나와 AI가 한 팀으로 잘 일하려면 둘 다 맞춰야 한다.
+
+AI 개발에서 "어떻게 잘 할 것인가"를 고민할 때, 나 + AI가 한 몸이라는 걸 기본 전제로 해야 한다. AI를 도구로 보면 "어떻게 잘 쓸까"를 고민하게 되고, 팀원으로 보면 "어떻게 같이 잘 일할까"를 고민하게 된다. 프로세스 하네스를 만들고, 지식 저장소를 설계한 건, 이 팀이 잘 돌아가도록 협업 구조를 만들어가는 과정이다.
+
+아직은 나와 AI 둘만의 얘기고, 계획 단계다. 적용하고 개선하면서 다듬어야 한다. 그리고 실제 회사에서는 여러 사람이 각자의 AI와 함께 일한다. 사람 + AI 조합이 여럿인 팀에서는 협업 구조가 어떻게 달라져야 할까. 이것도 고민해야 할 문제다.
