@@ -4,7 +4,7 @@ import Navigation from '@/components/Navigation'
 import GoogleAnalytics from '../components/GoogleAnalytics'
 
 export const metadata: Metadata = {
-  title: { default: '만들고 배우는 기록', template: '%s | 만들고 배우는 기록' },
+  title: { default: '만들면서 배운 것에 대한 기록', template: '%s | 만들면서 배운 것에 대한 기록' },
   description:
     '일상생활과 기술을 활용한 문제 해결 과정과 경험을 기록하는 블로그',
   icons: {
