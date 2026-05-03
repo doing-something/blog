@@ -1,0 +1,230 @@
+---
+title: '브라우저 카메라 영상 처리와 원본 손실 최소화 가이드'
+date: 2026-05-03
+description: '브라우저에서 카메라 프레임을 받을 때 캡처와 렌더링 중 어디서 화질이 떨어지는지, 그리고 어떻게 점검할지 다룬다.'
+draft: false
+---
+
+---
+
+회사에서 새로 맡은 프로젝트의 카메라 캡처 코드에는, iPad를 기본적으로 세로(portrait)로 들고 쓰는 앱인데도 `getUserMedia()` 요청이 디바이스 방향과 무관하게 가로 해상도로 고정돼 있었다. 브라우저로 카메라 영상을 다뤄 본 경험이 없어서, 사전 지식이 필요하다.
+
+이 글은 브라우저에서 카메라 프레임을 받을 때 어디서 손실이 생기는지 설명하고, 그 손실을 **캡처 단계**와 **렌더링 단계**로 나눠 점검하는 방법을 정리한다. 실시간 영상 분석(자세 추정·얼굴 인식·OCR 등)처럼 입력 화질과 좌표 정합성이 결과에 그대로 영향을 주는 앱에서 특히 중요하다.
+
+## 목적
+
+브라우저 환경에서 카메라 영상을 렌더링할 때 발생할 수 있는 화질 저하를 방지하고 최적의 성능을 확보하는 것을 목표로 한다.
+
+* 카메라 원본 영상 정보의 손실(**Crop, Scale**) 최소화
+* 브라우저 엔진의 불필요한 영상 변환 연산(연산 부하) 방지
+* 디바이스 방향 가정이 아닌, **센서가 실제로 노출하는 포맷** 중심의 Constraint 설계
+
+## 핵심 전제: Constraint는 두 종류다
+
+`getUserMedia()`에 넘기는 값은 키워드에 따라 처리 방식이 다르다. "전부 권고일 뿐"이라고 묶으면 잘못된 일반화이다.
+
+* **권고형 (`ideal` 또는 단순 값)**: 브라우저가 **Fitness Distance** 알고리즘으로 가장 가까운 값을 골라 준다. 요청과 다른 값이 나올 수 있다.
+* **필수형 (`exact`, `min`, `max`)**: 모두 만족하지 못하면 `OverconstrainedError`로 호출이 실패한다는 점은 같다. 단, 성공했을 때 실제 값이 정해지는 방식은 다르다.
+    * `exact: V` → 트랙 값이 정확히 `V`로 고정된다.
+    * `min: V` / `max: V` → `V`는 **경계값**이다. 실제 값은 그 범위 안에서 결정되며(같이 준 `ideal` 또는 단순 값과의 Fitness Distance, 없으면 브라우저가 임의로 선택), 반드시 `V` 자체로 고정되지는 않는다. 예: `width: { min: 1280, max: 1920 }`는 1280·1920뿐 아니라 그 사이 어떤 지원 값으로도 성공할 수 있다.
+
+또한 한 항목을 필수형으로 고정해도 명시하지 않은 다른 항목(`height`, `frameRate` 등)은 여전히 브라우저가 선택한다. 따라서 실제 트랙 설정은 항상 `track.getSettings()`로 확인해야 한다.
+
+```javascript
+const track = stream.getVideoTracks()[0];
+console.log(track.getSettings()); // 실제 적용된 width, height 확인
+```
+
+* **표준 근거**: [W3C Media Capture and Streams — Constrainable Pattern](https://www.w3.org/TR/mediacapture-streams/#constrainable-interface), [Fitness Distance 정의](https://www.w3.org/TR/mediacapture-streams/#dfn-fitness-distance), [SelectSettings 알고리즘](https://www.w3.org/TR/mediacapture-streams/#dfn-selectsettings)
+
+## 하드웨어의 한계: 지원 해상도는 미리 정해져 있다
+
+카메라는 모든 해상도를 자유자재로 제공하지 않으며, 드라이버가 노출하는 특정 포맷 집합 안에서만 동작한다.
+
+* **브라우저 표준으로 확인하는 법 (최신 브라우저 기준)**: [`MediaStreamTrack.getCapabilities()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrack/getCapabilities)가 트랙이 지원하는 `width`/`height`/`aspectRatio`/`frameRate` 등의 범위를 돌려준다. MDN 기준 **Baseline 2024**(2024-10 이후 주요 브라우저)에 도달한 API라, 그 이전의 구형 브라우저·기기에서는 동작하지 않을 수 있으므로 호출 전에 존재 여부를 확인해야 한다.
+    ```javascript
+    const track = stream.getVideoTracks()[0];
+    if (typeof track.getCapabilities === 'function') {
+      console.log(track.getCapabilities()); // { width: { min, max }, height: ..., aspectRatio: ..., ... }
+    }
+    ```
+* **한계**: `getCapabilities()`는 보통 `min`/`max` 범위만 돌려주고, 그 범위 안에서 실제로 어떤 `(width, height)` 쌍이 지원되는지는 노출하지 않는다. 따라서 특정 해상도 동작 여부는 아래 실무 전략의 `exact` 순차 테스트로 따로 확인해야 한다(이 방법은 `getCapabilities()`를 지원하지 않는 구형 환경의 폴백으로도 그대로 쓸 수 있다).
+* **현상**: 요청한 해상도나 비율이 실제 지원 포맷과 다를 경우, 브라우저가 다른 포맷을 선택하거나 프레임을 강제로 변환(Crop/Scale)한다.
+* **참고 — 내부 구현**: 이 한계는 OS 카메라 API 단에서 출발한다(Android [`StreamConfigurationMap`](https://developer.android.com/reference/android/hardware/camera2/params/StreamConfigurationMap), iOS [`AVCaptureDevice.Format`](https://developer.apple.com/documentation/avfoundation/avcapturedevice/format), 데스크톱은 드라이버가 노출하는 포맷 목록). 다만 최종 `capabilities`/`settings`는 MDN 표현대로 *platform and user agent based*이다. 즉 OS/드라이버 제약을 바탕으로 하되, UA가 어떤 항목을 어떤 형태로 노출할지 결정한다(예: 내부 다운스케일 결과를 범위에 합쳐 노출하는 식).
+
+## Chromium(WebRTC) 엔진 처리 로직 (상세 근거)
+
+구글 크롬 등 Chromium 기반 브라우저가 영상을 조정하는 실제 코드는 다음과 같다.
+
+### Crop 발생 로직 (Aspect Ratio Mismatch)
+
+* **소스 참조**: [`media/base/video_adapter.cc` — `AdaptFrameResolution`](https://webrtc.googlesource.com/src/+/refs/heads/main/media/base/video_adapter.cc)
+* **동작 원리**: 요청 비율에 맞추기 위해 입력 프레임의 중앙을 기준으로 영역을 계산하여 잘라낸다 (**Center Crop**). 실제 코드는 `static_cast<int>`로 정수 변환하지만, 개념적으로는 다음과 같다.
+    * `cropped_width = min(input_width, input_height * requested_aspect)`
+    * `cropped_height = min(input_height, input_width / requested_aspect)`
+
+### Scale 발생 로직 (Downscaling)
+
+* **소스 참조**: [`media/base/video_adapter.cc` — `FindScale`](https://webrtc.googlesource.com/src/+/refs/heads/main/media/base/video_adapter.cc)
+* **원칙**: `FindScale` 함수에 **`// Don't scale up original.`** 주석과 함께 `target_pixels >= input_pixels`이면 1:1 스케일을 반환하는 분기가 있어, 기본적으로 업스케일은 수행하지 않고 주로 다운스케일만 수행한다.
+
+### 표준 API에서 이 사실을 어떻게 확인하나: `resizeMode`
+
+* **표준 의미**: [`MediaTrackConstraints.resizeMode`](https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackConstraints#resizemode)는 브라우저가 목표 해상도를 만들기 위해 어떤 방식을 써도 되는지 알려 주는 제약이다.
+    * `none` → 카메라/드라이버/OS가 내놓은 해상도를 그대로 쓴다
+    * `crop-and-scale` → 브라우저가 크롭과 다운스케일로 목표 해상도를 만들어도 된다
+* **실제 결과 확인**: [`track.getSettings().resizeMode`](https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackSettings#resizemode)로 현재 트랙이 어떤 모드로 만들어졌는지 확인할 수 있다.
+    ```javascript
+    const track = stream.getVideoTracks()[0];
+    console.log(track.getSettings().resizeMode); // "none" | "crop-and-scale"
+    ```
+* **해석**:
+    * `none`이면 현재 트랙 해상도는 네이티브 포맷 중 하나일 가능성이 높다.
+    * `crop-and-scale`이면 현재 트랙 해상도는 브라우저가 더 큰 입력을 잘라내거나 줄여서 만든 결과일 수 있다.
+* **주의**: 지원 여부와 보고 방식은 브라우저마다 다를 수 있다. 이 값은 "손실 가능성을 확인하는 신호"로 쓰고, 최종 판단은 `getSettings()`의 `width`/`height`와 실제 렌더링 결과를 같이 봐야 한다.
+
+## iPad 및 모바일 기기 세로 촬영 전략
+
+* **원리**: 위 식에서 보듯, 손실은 요청 종횡비와 센서 네이티브 종횡비의 불일치에서 발생한다. WebRTC 구현 주석도 요청 비율을 **orientation agnostic** 하게 다룬다고 설명한다. 즉 `1280x720`과 `720x1280`은 **가로/세로 차이는 무시되고 종횡비만으로 비교되므로**, 16:9 센서 기준에서는 같은 적합도를 갖는다. 근거: [`video_adapter.h` 62번째 줄 주석](https://webrtc.googlesource.com/src/%2B/82617ac51e7825db53451818f4d1ad52b69761fd/media/base/video_adapter.h#62)
+* 현대 모바일·노트북 카메라 센서는 **대부분** 가로형(예: 16:9, 4:3) 포맷만 노출한다. 이 환경에서 세로 비율(예: 9:16)을 요청하면 큰 폭의 Center Crop이 발생한다.
+    * 예: `720×1280`(비율 0.5625)을 `1920×1080`(비율 1.778) 센서에 요청 → `cropped_width ≈ 607`로 가로가 약 1/3로 잘림.
+* **세로로 꽉 차 보인다고 세로 네이티브는 아님**: 사용자가 기기를 세로로 들었을 때 화면이 세로로 가득 차 보이는 것은 **표시 단계의 결과**일 수 있다. `<video>`의 실제 렌더링 크기는 `video.videoWidth` / `video.videoHeight`와 CSS 박스가 함께 결정하므로, "세로로 보인다"는 사실만으로 캡처 트랙이 처음부터 세로 포맷이라고 결론 내리면 안 된다.
+* **권장**:
+    1. 데이터는 센서 네이티브 비율(보통 가로)로 취득한다.
+    2. 화면 표시는 렌더링 단계(CSS Transform, Canvas 회전)에서 처리한다.
+* **단, 항상 가로가 정답인 건 아님**: 일부 기기·드라이버는 세로 포맷을 네이티브로 노출하기도 한다. 따라서 "가로를 요청한다"가 아니라 "센서가 노출하는 비율 중 하나를 골라 요청한다"가 정확한 표현이다. 가능한 포맷 탐색은 아래 실무 전략의 `exact` 순차 테스트로 한다.
+* **주의**: 같은 가로 요청이라도 브라우저·OS·기기 조합에 따라 실제 트랙 방향이 다를 수 있으므로, 회전 처리 전에 `track.getSettings()`로 실제 `width`/`height`를 확인해야 한다.
+
+## 렌더링 단계 손실: 캡처가 맞아도 화면에서 다시 깨질 수 있다
+
+앞 절까지는 **카메라에서 어떤 프레임이 들어오느냐** 이야기였다. 하지만 사용자가 실제로 보는 화질은 `<video>`와 `<canvas>`에 그리는 단계에서 한 번 더 달라질 수 있다.
+
+### `<video>`의 표시 크기와 원본 크기는 다르다
+
+`track.getSettings().width/height`는 트랙 설정이고, 화면에 올라간 비디오의 내장 크기는 `video.videoWidth` / `video.videoHeight`로 확인한다.
+
+```javascript
+console.log(track.getSettings()); // 트랙 설정
+console.log(video.videoWidth, video.videoHeight); // video 요소의 실제 내장 크기
+```
+
+* **왜 둘을 같이 보나**:
+    * `getSettings()`는 브라우저가 선택한 트랙 설정을 보여준다.
+    * `video.videoWidth` / `video.videoHeight`는 `<video>`가 실제로 렌더링에 쓰는 내장 크기를 보여준다.
+* **실무 판단**: 두 값이 기대와 다르면, 문제는 캡처 제약이 아니라 브라우저의 미디어 처리나 렌더링 단계에 있을 수 있다.
+
+### CSS 박스가 종횡비를 다시 망가뜨릴 수 있다
+
+`<video>`를 CSS로 늘리거나 줄일 때 원본 종횡비와 다른 박스에 억지로 맞추면 화면에서 다시 왜곡이나 크롭이 생긴다.
+
+* **대표 원인**:
+    * 고정 `width`/`height`를 원본 비율과 다르게 지정
+    * `object-fit: cover`로 박스를 꽉 채우면서 가장자리를 잘라냄
+    * `transform: rotate(...)` 후 컨테이너 크기를 다시 맞추지 않아 일부가 잘려 보임
+* **권장**:
+    * 비디오 표시 박스도 원본과 같은 종횡비를 유지한다.
+    * 꽉 채우기보다 원본 보존이 중요하면 `object-fit: contain` 쪽이 안전하다.
+    * 회전은 가능하면 비디오 박스 비율을 유지한 채 적용하고, 잘림이 없는지 실제 화면으로 확인한다.
+
+### Canvas는 CSS 크기와 내부 버퍼 크기를 따로 맞춰야 한다
+
+`<canvas>`는 화면에 보이는 CSS 크기와 실제 픽셀 버퍼 크기(`canvas.width`, `canvas.height`)가 다를 수 있다. CSS 크기만 키우고 내부 버퍼를 같이 키우지 않으면 흐릿하게 보인다.
+
+```javascript
+canvas.width = video.videoWidth;
+canvas.height = video.videoHeight;
+canvas.style.width = `${video.clientWidth}px`;
+canvas.style.height = `${video.clientHeight}px`;
+```
+
+* **핵심 원칙**:
+    * 분석용 캔버스는 가능하면 입력 프레임과 같은 내부 해상도로 맞춘다.
+    * 화면 표시용으로 축소해서 보여줄 수는 있지만, 그 경우에도 내부 버퍼는 원본 기준으로 유지하는 편이 안전하다.
+    * 고해상도 화면에서 선명도가 더 중요하면 `devicePixelRatio`까지 반영한 별도 조정이 필요할 수 있다.
+
+### 그래서 최종 점검은 네 단계다
+
+1. `constraints`로 무엇을 요청했는가
+2. `track.getSettings()`로 실제 트랙이 무엇으로 잡혔는가
+3. `video.videoWidth` / `video.videoHeight`로 `<video>`가 무엇을 렌더링하는가
+4. CSS 박스와 canvas 버퍼가 그 크기와 비율을 보존하는가
+
+이 네 단계 중 하나라도 어긋나면 사용자는 "카메라 화질이 떨어졌다"고 느낄 수 있다.
+
+## 실무 전략: 먼저 넓게 요청하고, 받은 뒤에 적응한다
+
+실무에서는 보통 **기기가 무엇을 줄 수 있는지 먼저 묻고, 기기가 실제로 준 값에 맞춰 앱이 스스로를 바꾼다**는 전략을 쓴다.
+
+### 1차 요청은 `ideal` 또는 단순 값 중심으로 둔다
+
+W3C SelectSettings 알고리즘은 **bare value(단순 값)** 를 `ideal`처럼 취급한다. 따라서 첫 요청은 보통 다음처럼 "이 정도 비율과 크기를 선호한다"는 뜻으로 시작하는 편이 안전하다.
+
+```javascript
+const stream = await navigator.mediaDevices.getUserMedia({
+  video: {
+    width: 1280,
+    height: 720,
+    aspectRatio: 16 / 9,
+  },
+});
+```
+
+이 방식은 브라우저에게 선택 여지를 남겨 두므로, 파편화된 모바일 환경에서 처음부터 `OverconstrainedError`로 실패할 가능성을 줄인다.
+
+### 2차로는 반드시 실제 결과를 읽는다
+
+요청이 끝난 뒤에는 추측하지 말고 실제 결과를 읽는다.
+
+```javascript
+const track = stream.getVideoTracks()[0];
+const settings = track.getSettings();
+
+console.log(settings.width, settings.height, settings.resizeMode);
+console.log(video.videoWidth, video.videoHeight);
+```
+
+* `getSettings()` → 브라우저가 실제로 잡은 트랙 설정
+* `video.videoWidth` / `video.videoHeight` → 사용자가 보게 되는 비디오의 내장 렌더링 크기
+
+이 단계가 빠지면 "세로로 들었으니 세로 포맷이겠지" 같은 추측이 코드에 들어가고, 기기별 예외가 곧 버그가 된다.
+
+### 3차로는 앱이 스스로 적응한다
+
+실제 값이 정해지면 그 값에 맞춰 앱을 바꾼다.
+
+* canvas 내부 버퍼를 `settings` 또는 `video.videoWidth/video.videoHeight`에 맞춘다
+* 세로 UI가 필요하면 추론 입력은 유지하고 표시만 회전한다
+* `resizeMode === "crop-and-scale"`이면 이미 브라우저 내부 가공이 들어갔을 수 있으므로, 더 공격적인 후처리를 피한다
+
+이 전략의 장점은 **원본 손실을 줄이면서도 런타임 실패율을 낮춘다**는 점이다. AI 분석 파이프라인에서도 불필요한 crop/scale/rotate를 줄이면 좌표 왜곡 가능성과 추가 연산량을 함께 줄일 수 있다.
+
+### `exact` 순차 테스트는 기본 운영이 아니라 프로파일링 단계다
+
+`exact` 제약 조건을 여러 개 순차 테스트하는 방법은 여전히 유효하다. 다만 이것은 **기기별 최적 포맷을 찾아 표를 만들거나, 특정 제품군을 튜닝하는 단계**에 더 가깝다.
+
+즉 기본 운영 전략은 보통 다음 순서가 된다.
+
+1. `ideal` 또는 단순 값으로 넓게 요청한다
+2. `getSettings()`와 `video.videoWidth/video.videoHeight`로 실제 결과를 읽는다
+3. 앱이 그 값에 맞게 회전·캔버스·UI를 조정한다
+4. 필요할 때만 `exact` 테스트로 기기 프로파일을 만든다
+
+## 실무 최적화 원칙 요약
+
+1. **네이티브 포맷 우선**: 카메라 하드웨어가 실제로 지원하는 해상도와 비율을 최우선으로 고려한다.
+2. **기본 전략은 `ideal` 요청 후 적응**: 처음부터 좁게 고정하지 말고, 브라우저가 줄 수 있는 최선의 값을 먼저 받는다.
+3. **실측 기반 확인**: 요청 뒤에는 반드시 `getSettings()`와 `video.videoWidth/video.videoHeight`로 실제 결과를 확인한다.
+4. **`resizeMode` 확인**: `getSettings().resizeMode`가 `crop-and-scale`이면 브라우저 내부 가공이 들어갔을 가능성을 의심한다.
+5. **렌더링 단계 분리 확인**: 트랙 설정과 별개로 `<video>` 요소, CSS 박스, `<canvas>` 버퍼 단계에서 다시 손실되지 않는지 확인한다.
+6. **`exact` 테스트는 최적화 단계**: 기기별 최적 해상도 리스트를 만들거나 문제 기기를 프로파일링할 때 사용한다.
+7. **Content Hint는 인코딩 단계용 힌트**: `track.contentHint`는 캡처 해상도를 바꾸지 않으며, 로컬 분석 파이프라인에는 효과가 거의 없다.
+8. **캡처부터 렌더링까지 비율 일치**: **[하드웨어 지원 포맷] = [Constraint 요청 비율] = [실제 출력 세팅] = [렌더링 비율]**이 모두 같을 때 연산 부하와 화질 손실이 최소화된다.
+
+## 최종 결론
+
+영상 손실은 기기의 물리적 방향 하나로 설명되지 않는다. 실제 손실 지점은 보통 두 군데이다.
+
+1. **캡처 단계**: 하드웨어가 지원하는 포맷과 소프트웨어가 요청한 값 사이의 간극
+2. **렌더링 단계**: 이미 들어온 프레임을 `<video>`·CSS·`<canvas>`에 올리는 과정에서 생기는 재가공
+
+따라서 "카메라 화질"을 논할 때는 `constraints`만 볼 게 아니라 `getSettings()`, `resizeMode`, `video.videoWidth/video.videoHeight`, CSS 비율, canvas 버퍼 크기까지 한 묶음으로 점검하는 게 맞다. 이 묶음을 습관처럼 같이 보면 브라우저 내부의 불필요한 가공을 줄이고 원본에 가까운 영상을 더 안정적으로 얻을 수 있다.
