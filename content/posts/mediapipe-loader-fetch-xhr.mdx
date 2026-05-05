@@ -1,0 +1,170 @@
+---
+title: 'MediaPipe 모델 로딩 실패를 추적하며 본 `fetch`와 `XMLHttpRequest`'
+date: 2026-05-05
+description: 'MediaPipe wasm 로더가 fetch와 XMLHttpRequest를 어떻게 나눠 쓰는지, 그 분기가 모델 로딩 실패 메시지에 어떤 영향을 주는지 정리한다.'
+draft: false
+---
+
+---
+
+## 범위
+
+- `@mediapipe/tasks-vision@0.10.35`
+- `https://unpkg.com/@mediapipe/tasks-vision@0.10.35/wasm/vision_wasm_module_internal.js`
+
+버전이 바뀌면 내부 구현도 바뀔 수 있다. 아래 내용은 이 버전 기준이다.
+
+## 배경
+
+모델 로딩 실패를 잡아 사용자용 메시지로 바꾸는 과정에서, 사람이 읽을 수 있는 에러 문구 대신 `[object Event]`가 화면에 표시됐다. 이 문제를 찾고자 https://unpkg.com/@mediapipe/tasks-vision@0.10.35/wasm/vision_wasm_module_internal.js를 확인했다.
+
+## 왜 `[object Event]`가 나왔는가?
+
+이 파일의 `file://` 경로에는 아래 코드가 있다.
+
+```js
+xhr.onerror = reject;
+```
+
+실패 시 reject에 들어가는 값은 Error가 아니라 브라우저의 ProgressEvent나 Event일 수 있다.
+
+1. XHR 네트워크 실패 발생
+2. 브라우저가 error 이벤트를 발생시킴
+3. xhr.onerror = reject로 연결돼 있으면 그 이벤트 객체가 그대로 Promise reject 값이 됨
+4. 호출자에서 catch (error)로 받았을 때 error instanceof Error가 아닐 수 있음
+5. String(error)를 하면 [object ProgressEvent] 또는 [object Event]처럼 보일 수 있음
+
+## 확인한 코드 경로
+
+### 1. 일반 웹 URL은 `fetch`를 쓴다.
+
+`readAsync`에는 아래 코드가 있다.
+
+```js
+var response = await fetch(url, {
+  credentials: "same-origin"
+});
+if (response.ok) {
+  return response.arrayBuffer();
+}
+```
+
+즉 일반적인 `https://` 경로에서는 `fetch`로 바이너리를 읽는다.
+
+### 2. `file://` URL은 `XMLHttpRequest`를 쓴다.
+
+같은 `readAsync` 안에 `file://` 예외 경로가 있다.
+
+```js
+if (isFileURI(url)) {
+  return new Promise((resolve, reject) => {
+    var xhr = new XMLHttpRequest;
+    xhr.open("GET", url, true);
+    xhr.responseType = "arraybuffer";
+    xhr.onload = () => {
+      if (xhr.status == 200 || (xhr.status == 0 && xhr.response)) {
+        resolve(xhr.response);
+        return;
+      }
+      reject(xhr.status);
+    };
+    xhr.onerror = reject;
+    xhr.send(null);
+  });
+}
+```
+
+파일 안에 있는 주석도 이렇게 말한다.
+
+- `fetch`는 `file://` URL에서 제약이 있다.
+- Cordova, Electron 같은 환경은 `file://`로 실행될 수 있다.
+- 그래서 이 경우에는 XHR을 쓴다.
+
+즉 이 로더는 "항상 fetch"가 아니라, URL 스킴과 실행 환경을 보고 분기한다.
+
+### 3. wasm은 먼저 streaming compile을 시도한다.
+
+`instantiateAsync`는 먼저 `fetch` 결과를 `WebAssembly.instantiateStreaming(...)`에 넣는다.
+
+```js
+var response = fetch(binaryFile, {
+  credentials: "same-origin"
+});
+var instantiationResult =
+  await WebAssembly.instantiateStreaming(response, imports);
+```
+
+이 경로가 실패하면 `ArrayBuffer` 기반 경로로 폴백한다.
+
+```js
+err(`wasm streaming compile failed: ${reason}`);
+err("falling back to ArrayBuffer instantiation");
+```
+
+즉 브라우저가 지원하면 스트리밍 컴파일을 우선 사용하고, MIME type 같은 이유로 실패하면 더 일반적인 방식으로 다시 시도한다.
+
+### 4. 다른 경로에서는 동기 XHR도 쓴다
+
+파일 안에는 비동기 `fetch` 외에도 동기 `XMLHttpRequest` 경로가 남아 있다.
+
+예:
+
+```js
+xhr.open("GET", url, false);
+```
+
+또 lazy file 쪽에서는 `HEAD` 요청과 `Range` 요청도 XHR로 처리한다.
+
+```js
+xhr.open("HEAD", url, false);
+...
+xhr.setRequestHeader("Range", "bytes=" + from + "-" + to);
+```
+
+이 부분을 보면, 이 로더는 단순한 네트워크 다운로드 함수가 아니라 Emscripten 스타일의 여러 환경 대응 코드를 같이 품고 있다는 걸 알 수 있다.
+
+## 왜 둘 다 쓰는가
+
+### `fetch`가 맡는 역할
+
+- 일반 웹 URL 비동기 로딩
+- `Response` 기반 처리
+- `WebAssembly.instantiateStreaming(...)` 연결
+
+표준 웹 환경에서 wasm을 읽고 바로 컴파일하는 데 잘 맞는다.
+
+### `XMLHttpRequest`가 맡는 역할
+
+- `file://` URL 대응
+- 동기 읽기 경로
+- `HEAD` 요청
+- `Range` 요청
+- 오래된 환경 대응
+
+즉 이 파일에서는 `fetch`가 기본 경로이고, XHR은 예외 환경과 특수 기능 경로를 맡고 있다.
+
+## `fetch`와 `XMLHttpRequest`의 차이
+
+### `fetch`
+
+- Promise 기반 비동기 API
+- `Response` 객체를 통해 상태와 바디를 다룸
+- streaming compile과 자연스럽게 연결됨
+- 이 파일 주석 기준으로 `file://` 경로에는 그대로 쓰기 어려움
+
+### `XMLHttpRequest`
+
+- 이벤트 기반 API
+- `responseType = "arraybuffer"`로 바이너리 응답 처리 가능
+- `HEAD`, `Range`, 동기 요청 같은 경로를 직접 다룸
+- 실패 시 `onerror`를 통해 브라우저 `Event`가 전달될 수 있음
+
+## 마무리
+
+- MediaPipe 바깥으로 나오는 실패 값의 모양은 고정되어 있지 않다.
+- 같은 모델 로딩 실패라도 `TypeError`, 문자열, `Event`처럼 다른 형태로 들어올 수 있다.
+- 내부 구현 모양에 강하게 기대는 분기는 유지 비용이 크다.
+
+그래서 사용자 화면에는 단순한 안내 문구를 보여 주고, 진단 정보는 `console.error`로 남기도록 했다. (학습용 프로젝트라 간단하게 처리함)
+
+`fetch` API를 주로 쓰고 있고, 내부 로딩까지 감싼 써드파티를 사용한 기억이 없다보니, 실패가 `Error`가 아니라 `Event` 계열 값으로 올라올 수 있다는 점을 바로 떠올리지 못했다.
