@@ -1,0 +1,190 @@
+---
+title: 'Gradient Descent'
+date: 2026-06-06
+description: 'Gradient Descent가 slope와 bias 같은 weights를 조금씩 바꿔가며 모델을 학습시키는 방법과 Batch·Stochastic·Mini-Batch 세 가지 방식을 본다.'
+draft: false
+---
+
+---
+
+## Gradient Descent는 weights를 조금씩 바꾸는 방법이다.
+
+먼저 모델을 단순한 직선으로 생각한다.
+
+```
+y_pred = slope * x + bias
+```
+
+여기서 학습해야 하는 값은 slope와 bias다.
+
+```
+weights = [slope, bias]
+```
+
+Gradient Descent는 현재 weights로 예측하고, 예측이 실제값과 얼마나 다른지 계산한 뒤, loss가 줄어드는 방향으로 weights를 조금씩 바꾼다.
+
+**예측한다**
+1. error를 구한다.
+2. gradient를 계산한다.
+3. gradient를 계산한다.
+
+공식은 다음과 같다.
+
+```
+y_pred = X_batch @ weights
+error = y_pred - y_batch
+gradient = (2 / batch_size) * X_batch.T @ error
+weights = weights - learning_rate * gradient
+```
+
+여기서 중요한 부분은 X_batch인데, 이번 업데이트에 사용할 데이터 묶음이다.
+
+## Gradient Descent variants
+
+각 방식의 차이는 radient를 계산할 때 몇 개의 데이터를 보느냐이다.
+
+### Batch Gradient Descent
+
+전체 데이터를 한 번에 보고 gradient를 계산한다.
+
+```
+전체 데이터 → gradient 계산 → weights update 1번
+```
+
+1 epoch = update 1번
+
+### Stochastic Gradient Descent
+
+sample 1개만 보고 gradient를 계산한다.
+
+```
+sample 0 → gradient 계산 → weights update
+sample 1 → gradient 계산 → weights update
+sample 2 → gradient 계산 → weights update
+```
+
+1 epoch = sample 개수만큼 update
+
+### Mini-Batch Gradient Descent
+
+정해진 개수의 sample 묶음을 보고 gradient를 계산한다.
+
+batch size가 2라면
+```
+sample 0, 1 → gradient 계산 → weights update
+sample 2, 3 → gradient 계산 → weights update
+```
+
+1 epoch = ceil(sample_count / batch_size)번 update
+
+## 데모
+
+### deep-ml 문제
+
+[Implement Gradient Descent Variants with MSE Loss](https://www.deep-ml.com/problems/47?from=PyTorch%20Basics)
+
+### 코드
+
+#### batch index 선택
+
+```ts
+/**
+ * method에 따라 이번 Step에서 사용할 sample index를 고른다.
+ *
+ * Batch: 전체 index
+ * Stochastic: 현재 stochasticCursor가 가리키는 index 1개
+ * Mini-Batch: 현재 miniBatchCursor가 가리키는 연속 index MINI_BATCH_SIZE개
+ *
+ * @sampleCount는 전체 데이터셋의 크기
+ */
+export function selectBatchIndices(
+  method: GradientMethod,
+  state: TrainingState,
+  sampleCount: number,
+): BatchSelection {
+  /**
+   * Batch:
+   * startIndex = 0
+   * batchSize = sampleCount
+
+   * Stochastic:
+   * startIndex = state.stochasticCursor
+   * batchSize = 1
+
+   * Mini-Batch:
+   * startIndex = state.miniBatchCursor
+   * batchSize = MINI_BATCH_SIZE
+   */
+
+  const startIndex =
+    method === "batch"
+      ? 0
+      : method === "stochastic"
+        ? state.stochasticCursor
+        : state.miniBatchCursor;
+
+  const batchSize =
+    method === "batch"
+      ? sampleCount
+      : method === "stochastic"
+        ? 1
+        : MINI_BATCH_SIZE;
+
+  const indices = Array.from({ length: batchSize }, (_, i) => startIndex + i);
+  const nextCursor = (startIndex + batchSize) % sampleCount;
+
+  return {
+    indices,
+    nextMiniBatchCursor: method === "mini-batch" ? nextCursor : state.miniBatchCursor,
+    nextStochasticCursor: method === "stochastic" ? nextCursor : state.stochasticCursor,
+  }
+}
+```
+
+#### 선택한 batch로 gradient를 계산한다
+
+```ts
+/**
+ * 선택된 batch 데이터로 gradient를 계산해서 weights [slope, bias]를 한 번 업데이트한다.
+ * 아래 공통 공식 사용.
+ *
+ * y_pred = X_batch @ weights
+ * error = y_pred - y_batch
+ * gradient = (2 / batch_size) * X_batch.T @ error
+ * weights = weights - learning_rate * gradient
+ */
+export function applyGradientStep(
+  weights: Weights,
+  batch: DataPoint[],
+  learningRate: number,
+): Weights {
+  // MSE를 미분해서 나온 상수
+  const mseDerivativeScale = 2;
+  const batchSize = batch.length;
+
+  const xBatch = batch.map((point) => [point.x, 1]); // [x, 1] @ [slope, bias] 형태로 만들기
+  const yBatch = batch.map((point) => point.y);
+
+  const predictions = multiplyMatrixVector(xBatch, weights);
+  const errors = predictions.map((pred, i) => pred - yBatch[i]);
+  const gradientBase = multiplyMatrixVector(transpose(xBatch), errors);
+  const gradient = gradientBase.map((value) => (mseDerivativeScale / batchSize) * value);
+
+  return [
+    weights[0] - learningRate * gradient[0],
+    weights[1] - learningRate * gradient[1],
+  ]
+}
+```
+
+### 실행
+
+[데모 링크](https://doing-something.github.io/playground/gradient-descent-variants/)
+
+weights 한 번 학습 버튼을 누르면
+
+1. 현재 method를 확인한다
+2. 이번 업데이트에 사용할 sample index를 고른다
+3. 그 sample 묶음으로 gradient를 계산한다
+4. weights [slope, bias]를 한 번 업데이트한다
+5. 파란 예측선이 바뀐다
