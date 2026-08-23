@@ -29,10 +29,10 @@ explore → propose → validate → spec-review → apply → verify → archiv
 
 검토 결과는 이렇게 나온다.
 
-- Blockers — 이거 안 고치면 apply 못 함
-- Warnings — 구현은 되지만 나중에 정리 필요
-- Questions For Developer — 사람이 결정해줘야 하는 것
-- Ready For Apply — yes/no
+- Blockers: 이거 안 고치면 apply 못 함
+- Warnings: 구현은 되지만 나중에 정리 필요
+- Questions For Developer: 사람이 결정해줘야 하는 것
+- Ready For Apply: yes/no
 
 Blocker나 Question이 있으면 사람이 답하거나 스펙을 고친 뒤 다시 review를 돌린다.
 통과하면 apply로 넘어간다.
@@ -42,8 +42,8 @@ Blocker나 Question이 있으면 사람이 답하거나 스펙을 고친 뒤 다
 spec-review를 통과했는데도 구현 중에 문제가 뒤늦게 발견되는 경우가 있다.
 
 예를 들어
-- "이 데이터를 어디서 가져와야 하지?" — 스펙에 데이터 출처가 안 적혀 있었음
-- "이 로직은 A 컴포넌트가 담당? B 컴포넌트가 담당?" — 책임 경계가 모호했음
+- "이 데이터를 어디서 가져와야 하지?": 스펙에 데이터 출처가 안 적혀 있었음
+- "이 로직은 A 컴포넌트가 담당? B 컴포넌트가 담당?": 책임 경계가 모호했음
 
 이런 이슈가 apply(구현) 도중 또는 verify(검증) 때 발견되면, 그때서야 스펙을 고치거나 결정을 내려야 해서 진행이 멈추는 문제가 있었다. 그리고 이런 실패가 반복되어도 학습하는 구조가 없었다.
 
@@ -94,7 +94,7 @@ spec-review가 잡았어야 하는데 놓친 것.
 
 이 태그는 tasks.md의 Feedback 섹션에 기록한다.
 
-## 3. retro-spec-review — 회고 커맨드
+## 3. retro-spec-review: 회고 커맨드
 
 아카이브된 최근 change 5개를 모아서 "spec-review가 잘 작동하고 있는가?"를 회고하는 커맨드이다.
 
@@ -110,7 +110,7 @@ spec-review가 잡았어야 하는데 놓친 것.
 ## 세 가지 개선을 적용한 뒤 첫 결과
 
 개선된 spec-review를 단순한 업무에 돌려보았다.  
-Ready For Apply: no — 즉 "이 스펙으로 구현 시작하면 안 된다"가 나왔다.
+Ready For Apply: no. 즉 "이 스펙으로 구현 시작하면 안 된다"가 나왔다.
 
 잡아낸 문제는 다음과 같다.
 

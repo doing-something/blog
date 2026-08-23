@@ -34,7 +34,7 @@ getUserMedia()의 해상도 조건에는 ideal, exact, min, max 등을 사용할
 | 1920×1080 ideal                  | 1920×1080     | none               |
 | 1000×700 ideal                   | 1000×700      | **crop-and-scale** |
 | 7680×4320 ideal                  | **1920×1440** | none               |
-| 7680×4320 exact                  | 안 열림       | —                  |
+| 7680×4320 exact                  | 안 열림       | 없음               |
 
 세 번째 줄이 중요하다. 1000×700을 요청했더니 트랙도 1000×700으로 나왔다. 그런데 카메라 쪽에서 1000×700을 준 것은 아니다.
 
@@ -53,7 +53,7 @@ getUserMedia()의 해상도 조건에는 ideal, exact, min, max 등을 사용할
 
 카메라를 연 다음 `requestVideoFrameCallback`으로 프레임을 따라간다. 함수를 하나 등록해두면 새 프레임이 화면을 그리는 쪽으로 넘어갈 때 브라우저가 그 함수를 부른다.
 
-부를 때 값을 두 개 넘겨준다. `now`는 함수가 불린 시각이고, `metadata`에는 그 프레임에 붙은 정보가 들어 있다. metadata 안에도 시각이 있다 — captureTime, presentationTime, expectedDisplayTime, mediaTime이다.
+부를 때 값을 두 개 넘겨준다. `now`는 함수가 불린 시각이고, `metadata`에는 그 프레임에 붙은 정보가 들어 있다. metadata 안에도 시각이 있다. captureTime, presentationTime, expectedDisplayTime, mediaTime이다.
 
 1920×1080 / 60fps로 열고 300프레임을 받아 각 시각의 간격을 쟀다.
 
@@ -85,7 +85,7 @@ getUserMedia()의 해상도 조건에는 ideal, exact, min, max 등을 사용할
 
 | 카메라가 찍은 시각 | 함수가 불린 시각 | 앞 프레임과의 간격 |
 | ------------------ | ---------------- | ------------------ |
-| 0                  | 0                | —                  |
+| 0                  | 0                | 없음               |
 | 16.67              | 20               | 20ms               |
 | 33.33              | 40               | 20ms               |
 | 50                 | 50               | 10ms               |
@@ -103,7 +103,7 @@ presentedFrames는 매번 1씩 늘었다. 콜백 사이에 화면 쪽으로 넘�
 
 60fps면 한 장에 쓸 수 있는 시간이 16.67ms다. 어두운 곳에서는 빛을 더 오래 모아야 하는데, 셔터를 16.67ms 넘게 열면 다음 장을 제때 못 찍는다. 그러면 초당 장수를 줄여야 한다.
 
-그래서 이렇게 예상했다 — 어두운 곳에서 열면 `getSettings()`는 60을 그대로 보고하는데 `captureTime` 간격은 늘어날 것이다.
+그래서 이렇게 예상했다. 어두운 곳에서 열면 `getSettings()`는 60을 그대로 보고하는데 `captureTime` 간격은 늘어날 것이다.
 
 세 조건에서 300프레임씩 쟀다. 전부 1920×1080 / 60fps `exact`다. `getSettings().frameRate`는 카메라를 열 때 정해진 설정값이다. 지금 초당 몇 장 들어오는지 세어서 알려주는 값이 아니다. 그래서 실제 프레임 수가 줄어도 60으로 남아 있을 수 있다.
 
@@ -150,10 +150,10 @@ resizeMode도 함께 본다. crop-and-scale이면 브라우저 단계에서 이�
 
 ## 참고 자료
 
-- [HTMLVideoElement.requestVideoFrameCallback (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/HTMLVideoElement/requestVideoFrameCallback) — 콜백이 받는 메타데이터 항목 목록.
-- [MediaTrackSettings (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackSettings) — `getSettings()`가 돌려주는 값. `resizeMode`도 여기 있다.
-- [Media Capture and Streams (W3C)](https://www.w3.org/TR/mediacapture-streams/) — `resizeMode`의 `none`과 `crop-and-scale`이 각각 무슨 뜻인지, `ideal`과 `exact`를 어떻게 처리하는지 정해둔 스펙. `getSettings().frameRate`가 맞춰 둔 값이라는 설명도 여기 있다.
-- [requestVideoFrameCallback 명세 (WICG)](https://wicg.github.io/video-rvfc/) — 콜백이 언제 불리는지, 넘겨주는 메타데이터에 무엇이 있는지. 콜백 빠르기는 영상 프레임 수와 화면을 그리는 빠르기 중 느린 쪽에 막힌다.
-- [iPhone에서 비디오 녹화 설정 변경하기](https://support.apple.com/ko-kr/guide/iphone/-iphc1827d32f/ios) — 어두운 환경에서 프레임률을 24fps로 자동으로 낮출 수 있다는 설명.
-- [AVCaptureDevice.isAutoVideoFrameRateEnabled](https://developer.apple.com/documentation/avfoundation/avcapturedevice/isautovideoframerateenabled) — 최대 60fps 포맷에서 60에서 30, 24로 바꾼다.
-- [activeMaxExposureDuration](https://developer.apple.com/documentation/avfoundation/avcapturedevice/activemaxexposureduration) — 자동 노출이 쓸 수 있는 최대 노출 시간. 저조도 화질과 움직임 번짐 사이에서 정해진다.
+- [HTMLVideoElement.requestVideoFrameCallback (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/HTMLVideoElement/requestVideoFrameCallback): 콜백이 받는 메타데이터 항목 목록.
+- [MediaTrackSettings (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackSettings): `getSettings()`가 돌려주는 값. `resizeMode`도 여기 있다.
+- [Media Capture and Streams (W3C)](https://www.w3.org/TR/mediacapture-streams/): `resizeMode`의 `none`과 `crop-and-scale`이 각각 무슨 뜻인지, `ideal`과 `exact`를 어떻게 처리하는지 정해둔 스펙. `getSettings().frameRate`가 맞춰 둔 값이라는 설명도 여기 있다.
+- [requestVideoFrameCallback 명세 (WICG)](https://wicg.github.io/video-rvfc/): 콜백이 언제 불리는지, 넘겨주는 메타데이터에 무엇이 있는지. 콜백 빠르기는 영상 프레임 수와 화면을 그리는 빠르기 중 느린 쪽에 막힌다.
+- [iPhone에서 비디오 녹화 설정 변경하기](https://support.apple.com/ko-kr/guide/iphone/-iphc1827d32f/ios): 어두운 환경에서 프레임률을 24fps로 자동으로 낮출 수 있다는 설명.
+- [AVCaptureDevice.isAutoVideoFrameRateEnabled](https://developer.apple.com/documentation/avfoundation/avcapturedevice/isautovideoframerateenabled): 최대 60fps 포맷에서 60에서 30, 24로 바꾼다.
+- [activeMaxExposureDuration](https://developer.apple.com/documentation/avfoundation/avcapturedevice/activemaxexposureduration): 자동 노출이 쓸 수 있는 최대 노출 시간. 저조도 화질과 움직임 번짐 사이에서 정해진다.

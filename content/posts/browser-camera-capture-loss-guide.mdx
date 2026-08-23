@@ -35,7 +35,7 @@ const track = stream.getVideoTracks()[0];
 console.log(track.getSettings()); // 실제 적용된 width, height 확인
 ```
 
-* **표준 근거**: [W3C Media Capture and Streams — Constrainable Pattern](https://www.w3.org/TR/mediacapture-streams/#constrainable-interface), [Fitness Distance 정의](https://www.w3.org/TR/mediacapture-streams/#dfn-fitness-distance), [SelectSettings 알고리즘](https://www.w3.org/TR/mediacapture-streams/#dfn-selectsettings)
+* **표준 근거**: [W3C Media Capture and Streams: Constrainable Pattern](https://www.w3.org/TR/mediacapture-streams/#constrainable-interface), [Fitness Distance 정의](https://www.w3.org/TR/mediacapture-streams/#dfn-fitness-distance), [SelectSettings 알고리즘](https://www.w3.org/TR/mediacapture-streams/#dfn-selectsettings)
 
 ## 하드웨어의 한계: 지원 해상도는 미리 정해져 있다
 
@@ -50,7 +50,7 @@ console.log(track.getSettings()); // 실제 적용된 width, height 확인
     ```
 * **한계**: `getCapabilities()`는 보통 `min`/`max` 범위만 돌려주고, 그 범위 안에서 실제로 어떤 `(width, height)` 쌍이 지원되는지는 노출하지 않는다. 따라서 특정 해상도 동작 여부는 아래 실무 전략의 `exact` 순차 테스트로 따로 확인해야 한다(이 방법은 `getCapabilities()`를 지원하지 않는 구형 환경의 폴백으로도 그대로 쓸 수 있다).
 * **현상**: 요청한 해상도나 비율이 실제 지원 포맷과 다를 경우, 브라우저가 다른 포맷을 선택하거나 프레임을 강제로 변환(Crop/Scale)한다.
-* **참고 — 내부 구현**: 이 한계는 OS 카메라 API 단에서 출발한다(Android [`StreamConfigurationMap`](https://developer.android.com/reference/android/hardware/camera2/params/StreamConfigurationMap), iOS [`AVCaptureDevice.Format`](https://developer.apple.com/documentation/avfoundation/avcapturedevice/format), 데스크톱은 드라이버가 노출하는 포맷 목록). 다만 최종 `capabilities`/`settings`는 MDN 표현대로 *platform and user agent based*이다. 즉 OS/드라이버 제약을 바탕으로 하되, UA가 어떤 항목을 어떤 형태로 노출할지 결정한다(예: 내부 다운스케일 결과를 범위에 합쳐 노출하는 식).
+* **참고(내부 구현)**: 이 한계는 OS 카메라 API 단에서 출발한다(Android [`StreamConfigurationMap`](https://developer.android.com/reference/android/hardware/camera2/params/StreamConfigurationMap), iOS [`AVCaptureDevice.Format`](https://developer.apple.com/documentation/avfoundation/avcapturedevice/format), 데스크톱은 드라이버가 노출하는 포맷 목록). 다만 최종 `capabilities`/`settings`는 MDN 표현대로 *platform and user agent based*이다. 즉 OS/드라이버 제약을 바탕으로 하되, UA가 어떤 항목을 어떤 형태로 노출할지 결정한다(예: 내부 다운스케일 결과를 범위에 합쳐 노출하는 식).
 
 ## Chromium(WebRTC) 엔진 처리 로직 (상세 근거)
 
@@ -58,14 +58,14 @@ console.log(track.getSettings()); // 실제 적용된 width, height 확인
 
 ### Crop 발생 로직 (Aspect Ratio Mismatch)
 
-* **소스 참조**: [`media/base/video_adapter.cc` — `AdaptFrameResolution`](https://webrtc.googlesource.com/src/+/refs/heads/main/media/base/video_adapter.cc)
+* **소스 참조**: [`media/base/video_adapter.cc`의 `AdaptFrameResolution`](https://webrtc.googlesource.com/src/+/refs/heads/main/media/base/video_adapter.cc)
 * **동작 원리**: 요청 비율에 맞추기 위해 입력 프레임의 중앙을 기준으로 영역을 계산하여 잘라낸다 (**Center Crop**). 실제 코드는 `static_cast<int>`로 정수 변환하지만, 개념적으로는 다음과 같다.
     * `cropped_width = min(input_width, input_height * requested_aspect)`
     * `cropped_height = min(input_height, input_width / requested_aspect)`
 
 ### Scale 발생 로직 (Downscaling)
 
-* **소스 참조**: [`media/base/video_adapter.cc` — `FindScale`](https://webrtc.googlesource.com/src/+/refs/heads/main/media/base/video_adapter.cc)
+* **소스 참조**: [`media/base/video_adapter.cc`의 `FindScale`](https://webrtc.googlesource.com/src/+/refs/heads/main/media/base/video_adapter.cc)
 * **원칙**: `FindScale` 함수에 **`// Don't scale up original.`** 주석과 함께 `target_pixels >= input_pixels`이면 1:1 스케일을 반환하는 분기가 있어, 기본적으로 업스케일은 수행하지 않고 주로 다운스케일만 수행한다.
 
 ### 표준 API에서 이 사실을 어떻게 확인하나: `resizeMode`

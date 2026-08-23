@@ -25,7 +25,7 @@ proposal → specs → design → tasks
 
 OpenSpec은 프로젝트에 맞게 커스터마이징해서 쓸 수 있도록 설계되어 있다. 공식 문서에서는 이를 Project Config, Custom Schemas, Global Overrides 3단계로 나누어 설명한다. 나는 Project Config와 AI 커맨드/스킬 수정을 사용하고, spec 템플릿 수정은 기본 `spec-driven`을 프로젝트 로컬 스키마로 fork하는 방식으로 정리했다. 즉 작업 순서 자체는 `spec-driven`을 따르되, 템플릿 커스터마이징은 fork한 스키마에서 관리한다.
 
-### config.yaml — Project Config
+### config.yaml: Project Config
 
 `openspec/config.yaml`. 가장 기본적인 커스터마이징 방법이다. 3개 필드를 지원한다:
 
@@ -112,9 +112,9 @@ spec.md의 시나리오에 고유 ID를 붙이고, tasks.md 검증 항목에서 
 **tasks.md:**
 
 ```markdown
-- [ ] 6.1 SCN-EXPORT-CSV-REQUEST — export.test.ts 다운로드 시작 유닛 테스트 추가
-- [ ] 6.2 SCN-EXPORT-CSV-REQUEST — 계정 화면 "내보내기" 버튼 E2E 테스트 추가
-- [ ] 6.3 SCN-EXPORT-CSV-EMPTY — 데이터 없음 상태에서 안내 메시지 표시 유닛 테스트 추가
+- [ ] 6.1 SCN-EXPORT-CSV-REQUEST: export.test.ts 다운로드 시작 유닛 테스트 추가
+- [ ] 6.2 SCN-EXPORT-CSV-REQUEST: 계정 화면 "내보내기" 버튼 E2E 테스트 추가
+- [ ] 6.3 SCN-EXPORT-CSV-EMPTY: 데이터 없음 상태에서 안내 메시지 표시 유닛 테스트 추가
 ```
 
 이 규칙은 다음 파일들에 나누어 반영했다:
@@ -156,7 +156,7 @@ tasks.md는 구현 작업과 검증 작업 섹션으로 나눠 작성하게 했�
 - [ ] 6.5 iOS 키보드 오픈 시 footer 노출 확인
 ```
 
-### GRAY-AREAS — 미확정 사항 관리
+### GRAY-AREAS: 미확정 사항 관리
 
 design.md에 설계 단계에서 아직 결정되지 않은 것들을 명시하는 섹션이다. 구현에 들어가기 전에 "이건 아직 모른다, 확인이 필요하다"를 정리해서 잘못된 가정으로 구현하는 걸 방지한다.
 
@@ -200,7 +200,7 @@ config.yaml의 `rules.design`에 GRAY-AREAS를 이 6개 카테고리로 분류�
 
 기본 생성된 explore 스킬에 "생각 파트너" 철학을 추가했다:
 
-- 코드 작성 금지 — 탐색과 토론만 허용
+- 코드 작성 금지: 탐색과 토론만 허용
 - ASCII 다이어그램 적극 사용
 - OpenSpec 문서를 자연스럽게 참조하면서 대화
 - 결론을 강요하지 않고, 탐색 자체가 가치
@@ -213,12 +213,12 @@ config.yaml의 `rules.design`에 GRAY-AREAS를 이 6개 카테고리로 분류�
 - spec 업데이트가 기본 동작. 생략은 `--skip-specs`로 명시적 예외일 때만 허용
 - archive는 수동 `mv` 대신 `openspec archive` 명령으로만 수행
 
-### 이중 진입점 — Claude Code / Codex 동일 계약
+### 이중 진입점: Claude Code / Codex 동일 계약
 
 같은 워크플로우를 Claude Code와 Codex에서 모두 실행할 수 있도록 진입점을 분리했다:
 
-- Claude Code: `.claude/commands/opsx/*.md` — `/opsx:*` 슬래시 커맨드로 실행
-- Codex: `.codex/skills/openspec-*/SKILL.md` — `opsx:*`로 실행 (슬래시 없음)
+- Claude Code: `.claude/commands/opsx/*.md` (`/opsx:*` 슬래시 커맨드로 실행)
+- Codex: `.codex/skills/openspec-*/SKILL.md` (`opsx:*`로 실행, 슬래시 없음)
 - 공통 규칙: `AGENTS.md`에 도구별 매핑과 운영 규칙 문서화
 
 Claude Code는 명령어를 입력하면 정해진 커맨드가 바로 실행되지만, Codex는 문맥을 보고 어떤 스킬을 쓸지 판단한다. AGENTS.md에 매핑 테이블을 명시해서 올바른 스킬로 연결되도록 했다.

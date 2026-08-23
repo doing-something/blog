@@ -115,7 +115,7 @@ gradient = (2/2) × Xᵀ @ [-0.4, 0.2]
 작게 관여한 경우 더 작은 gradient가 나온다.  
 그래서 feature * error를 계산하면 각 weight를 어느 방향으로 얼마나 조정해야 하는지 알 수 있다.  
 
-## 4. Gradient Descent — gradient 반대 방향으로 weights 조정
+## 4. Gradient Descent: gradient 반대 방향으로 weights 조정
 
 ```
 weights = weights - learning_rate × gradient
@@ -135,7 +135,7 @@ weights = [[0.5],   gradient = [[0.3],   learning_rate = 0.1
 
 이 과정을 반복하면 weights가 점점 loss를 낮추는 방향으로 이동한다.
 
-## 5. Learning Rate — 한 번에 얼마나 크게 움직일지
+## 5. Learning Rate: 한 번에 얼마나 크게 움직일지
 
 gradient 방향으로 weight를 얼마나 크게 움직일지 정하는 값이다.
 
@@ -147,7 +147,7 @@ learning_rate = 0.00001  // 너무 느림
 
 보통 0.001 ~ 0.1 정도에서 시작해 보고 조정한다.
 
-## 6. Epoch — 전체 데이터를 한 번 다 보는 것
+## 6. Epoch: 전체 데이터를 한 번 다 보는 것
 
 데이터 전체를 한 번 모두 사용한 것이 1 epoch다. (epoch 안에서 weight 업데이트는 여러 번 일어날 수 있다.)
 보통 수십~수백 epoch를 돌린다.

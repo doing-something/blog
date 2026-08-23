@@ -315,3 +315,14 @@ B는 먼저 1920×1080 프레임 전체를 캔버스에서 읽었다. 이어서 
 
 다음 모델 비교에서는 위에서 정한 전처리 방법을 사용하고, 각 모델을 실행하는 동안 전처리 시간과
 모델 실행 시간을 각각 기록한다.
+
+## 참고 자료
+
+- [MDN: `requestVideoFrameCallback`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLVideoElement/requestVideoFrameCallback) — 영상 프레임에 맞춘 콜백 실행 시점과 메인 스레드 실행
+- [MDN: `OffscreenCanvas`](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas) — 워커에서 Canvas API를 사용하는 방법
+- [MDN: `createImageBitmap`](https://developer.mozilla.org/en-US/docs/Web/API/Window/createImageBitmap) — 이미지 자르기, 크기 변경 옵션과 `Promise` 반환
+- [MDN: `getImageData`](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/getImageData) — 캔버스 픽셀을 `ImageData`로 읽는 방법
+- [MDN: `OffscreenCanvas.getContext`](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas/getContext) — `willReadFrequently` 옵션의 의미
+- [WHATWG HTML: Canvas 2D](https://html.spec.whatwg.org/multipage/canvas.html) — `drawImage`의 자르기와 크기 변경, 축소 알고리즘의 표준 범위
+- [W3C: WebGPU](https://www.w3.org/TR/webgpu/#external-texture) — `VideoFrame`을 GPU 외부 텍스처로 사용하는 방법
+- [ONNX Runtime Web: WebGPU](https://onnxruntime.ai/docs/tutorials/web/ep-webgpu.html) — GPU 버퍼를 모델 입력 텐서로 사용하는 방법
