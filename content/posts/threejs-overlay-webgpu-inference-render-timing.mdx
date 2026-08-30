@@ -1,0 +1,186 @@
+---
+title: "카메라 영상을 분석하면서 Three.js로 그래픽을 그리면 화면 갱신이 늦어질까"
+date: 2026-08-30
+description: "Three.js로 점 이동 경로와 스켈레톤을 그리면서 MobileNet v2를 WebGPU로 함께 실행했다. 오버레이 종류별 CPU/GPU 시간, 추론 동시 실행의 영향, HTML video와 VideoTexture 비교, 영상 입력이 24fps로 느려질 때 같은 추론 결과를 다시 쓰는 비율을 측정한 기록."
+draft: false
+---
+
+---
+
+MobileNet은 CPU에서 영상 입력을 준비하고 WebGPU로 추론한다. Three.js는 메인 스레드에서 좌표를
+바꾸고 WebGL 그리기 명령을 GPU에 보낸다. 두 작업은 같은 GPU에서 실행된다. 100Hz 화면은 약
+10ms마다 갱신되므로 두 작업을 함께 실행할 때 처리 시간이 늘면 다음 화면 갱신이 늦어질 수 있다.
+
+이번에는 점 하나를 움직이고 이동 경로를 선으로 표시했다. 선은 점 좌표 60개를 순서대로 연결해
+만들었다. 점 33개와 선 32개로 만든 뼈대 모양(스켈레톤)도 Three.js로 그렸다. 미리 정한 점
+33개를 `sin`과 `cos` 값으로 조금씩 옮겨 뼈대가 움직이는 모습을 만들었다. 두 모양을 그릴 때
+CPU와 GPU에서 몇 ms가 걸리는지 확인하고, MobileNet이 카메라 영상을 분류할 때 값이 달라지는지
+비교했다.
+
+아래 네 가지를 확인했다.
+
+- 점 이동 경로와 스켈레톤을 그릴 때 CPU와 GPU에서 각각 몇 ms가 걸리는가?
+- WebGPU 추론과 WebGL 렌더를 함께 실행하면 서로 느려지는가?
+- HTML video와 `VideoTexture` 가운데 어느 쪽이 단순한 스켈레톤에 맞는가?
+- 들어오는 영상이 24fps로 느려지면 같은 추론 결과를 몇 화면 동안 다시 쓰는가?
+
+모든 비교는 Apple M4, macOS, Chrome 151, 100Hz 화면에서 실행했다.
+
+[실험 데모 링크](https://codepen.io/editor/skyparc/pen/01a05274-2fcc-7665-bb1a-8becba9c48ac)
+
+## 화면을 그릴 때 CPU와 GPU에서 걸린 시간을 나눠 확인했다
+
+`renderer.render()`를 호출하면 Three.js는 점과 선 정보를 GPU에 보내고 화면에 그려 달라고
+요청한다. `renderer.render()`가 끝나면 CPU는 다른 JavaScript를 실행할 수 있다. 이때 GPU는 아직
+화면을 그리고 있을 수 있다.
+
+가령 `renderer.render()`가 1ms 뒤 반환되고 GPU가 화면을 모두 그리는 데 7ms가 걸렸다고 하자.
+메인 스레드는 1ms 뒤 다른 JavaScript를 실행할 수 있다. 따라서 메인 스레드가
+`renderer.render()`를 실행한 시간은 1ms고, GPU가 화면을 그린 시간은 7ms다. 두 값을 더해
+`renderer.render()`가 8ms 걸렸다고 보면 안 된다.
+
+아래 값은 따로 확인했다.
+
+| 이름           | 확인한 구간                                 | 뜻                                                        |
+| -------------- | ------------------------------------------- | --------------------------------------------------------- |
+| `frameCpuMs`   | 한 번 화면을 그리며 메인 스레드에서 쓴 시간 | 10ms 안에 CPU 작업이 끝났는가?                            |
+| `renderCpuMs`  | `renderer.render()` 호출부터 반환까지       | Three.js가 정보를 보내고 그리기를 요청한 시간은 얼마인가? |
+| `gpuElapsedMs` | WebGL 명령을 GPU가 처리한 시간              | WebGL 그리기에 몇 ms가 걸렸는가?                          |
+| rAF miss       | rAF 실행 간격이 15ms보다 긴 때              | 100Hz 화면 갱신이 늦었는가?                               |
+
+rAF 실행 간격이 길어져도 CPU가 원인이라고 바로 말할 수 없다. 다른 메인 스레드 작업, 브라우저 일정,
+GPU 지연도 함께 확인해야 한다. CPU와 GPU 중 어느 쪽 값이 바뀌는지 `renderCpuMs`와
+`gpuElapsedMs`로 확인했다.
+
+## 좌표값을 바꿔 점과 선을 움직였다
+
+Three.js는 선을 이루는 점 좌표를 `Float32Array`에서 읽는다. 점 이동 경로 배열에는 점 60개에
+해당하는 `x`, `y`, `z`를 순서대로 넣었다. 스켈레톤 배열에는 선 32개에 필요한 시작점과 끝점
+좌표를 넣었다.
+
+화면마다 새 위치를 계산해 두 배열 값을 바꿨다. 이어 `BufferAttribute.needsUpdate`를 `true`로
+바꾸면 Three.js가 새 좌표를 GPU에 보낸다. 각 배열은 `BufferGeometry` 하나에 연결했고, Three.js는
+두 모양을 각각 한 번에 그렸다.
+
+스켈레톤 선은 `LineSegments`로 그렸다. A-B와 B-C를 그리려면 버퍼에는 A, B, B, C 차례로 좌표를
+넣는다. B는 두 선에 모두 닿으므로 두 번 들어간다. 점 33개도 같은 규칙으로 선 32개에 맞춰
+펼쳤다.
+
+오버레이 없음, 점 이동 경로, 스켈레톤 세 조건을 각각 5초씩 두 번 실행했다. 실행 직후 화면을
+60번 갱신하는 동안 셰이더를 준비하고 버퍼에 초기 좌표를 채웠다. 이때 나온 시간은 결과에서
+제외했다.
+
+| 갈래          | `frameCpuMs` p95 | `gpuElapsedMs` p95 | rAF miss |
+| ------------- | ---------------: | -----------------: | -------: |
+| 오버레이 없음 |       0.2\~0.3ms |     0.824\~0.830ms |       0% |
+| 점 이동 경로  |       0.3\~0.4ms |     0.821\~0.832ms |       0% |
+| 스켈레톤      |            0.3ms |     0.821\~0.831ms |       0% |
+
+세 조건에서 확인한 값 범위가 겹쳤고, 조건 간 차이는 반복 실행에서 생긴 차이보다 작았다.
+`frameCpuMs` p95는 모두 0.4ms 이하였고 rAF miss는 0%였다. 점 이동 경로와 스켈레톤을 각각 한
+번의 draw call로 그린 조건에서는 오버레이 종류에 따른 CPU 시간, GPU 시간, 화면 갱신 속도에
+뚜렷한 차이가 없었다.
+
+## WebGPU 추론을 함께 실행해도 100Hz 화면은 늦어지지 않았다
+
+스켈레톤을 계속 표시하면서 MobileNet v2가 카메라 영상을 분류하게 했다. 모델 추론은 워커에서
+WebGPU로 실행했다. 먼저 카메라에서 새 프레임이 들어올 때만 추론했다. 추론을 껐을 때와 비교해
+CPU 시간, WebGL GPU 시간, rAF miss에 뚜렷한 차이가 없었다.
+
+GPU 부하를 더 높인 조건에서는 추론이 끝나는 즉시 다음 추론을 시작했다. 이 조건을 `포화`라고
+정하고, 추론을 껐을 때와 다섯 번씩 번갈아 실행했다.
+
+작은 측정 변동과 구분하려고 실험 전에 `gpuElapsedMs` p95 증가폭 0.5ms를 판정 기준으로 정했다.
+`포화` 조건에서 확인한 증가폭은 매번 0.096\~0.160ms로 기준보다 작았다. CPU 시간은 늘지 않았고
+rAF miss는 모두 0%였다. 이 장비에서는 WebGL GPU 시간이 조금 늘었지만 100Hz 화면 갱신은
+늦어지지 않았다.
+
+`gpuElapsedMs`는 WebGL이 그리기 명령을 처리한 시간이다. WebGPU 추론 시간과 화면 표시 완료
+시간은 이 값에 들어가지 않는다. 따라서 여기서는 WebGL 그리기 시간과 rAF 실행 간격 변화를
+확인했다.
+
+## 카메라 영상과 스켈레톤을 한 화면에 표시하는 두 방법을 비교했다
+
+- HTML `<video>`와 canvas를 같은 크기와 위치에 배치했다. `<video>`는 카메라 영상을 보여주고,
+  canvas에는 배경색을 넣지 않은 채 스켈레톤만 그렸다.
+- 카메라 영상을 `VideoTexture`로 바꿔 스켈레톤과 함께 Three.js canvas 하나에 그렸다.
+
+실제 영상은 약 24fps로 들어왔다. 두 방법을 10초씩 다섯 번 번갈아 실행했다.
+
+| 방법                     | `renderCpuMs` p95 | `gpuElapsedMs` p95 | rAF miss |
+| ------------------------ | ----------------: | -----------------: | -------: |
+| HTML video + 투명 canvas |        0.2\~0.3ms |     0.817\~0.840ms |       0% |
+| `VideoTexture`           |        0.6\~0.7ms |     1.947\~2.013ms |       0% |
+
+`VideoTexture`는 영상을 WebGL에 올리고 그리는 일까지 맡아서 CPU 시간이 0.3\~0.5ms 더 길었다.
+두 방법 모두 `renderCpuMs` p95가 0.7ms 이내였고 rAF miss도 없었다.
+
+GPU 숫자는 두 방법을 직접 비교할 수 없다. 브라우저가 HTML video와 canvas를 합치는 일은 WebGL
+timer query에 포함되지 않는다. `VideoTexture`에서는 영상 업로드와 그리기가 query에 포함된다.
+따라서 표만 보고 HTML video가 GPU를 덜 쓴다고 말할 수 없다.
+
+단순한 스켈레톤에는 HTML video와 투명 canvas를 겹치는 방법을 골랐다. 코드가 짧고 영상을 WebGL
+안에 넣지 않아도 된다. 아래 일이 필요하면 `VideoTexture`를 고른다.
+
+- 영상 색을 바꾸거나 흐리게 만들거나 화면 일부를 늘이고 줄인다.
+- 영상 속 사람이나 물체 뒤에 3D 그래픽을 배치한다.
+- 카메라 영상과 스켈레톤이 함께 보이는 화면을 canvas 하나에서 영상 파일로 녹화한다.
+
+## 느린 영상에서는 같은 추론 결과를 여러 화면에서 다시 썼다
+
+브라우저에서 읽은 카메라 `frameRate` 설정값은 60이었지만 새 프레임은 초당 약 24개 들어왔다. worker canvas에서 목표
+속도가 60fps와 24fps인 영상을 각각 만들어 같은 코드에 입력했다. 브라우저가 실제로 받은 속도는
+약 52fps와 24fps였다.
+
+52fps와 24fps 영상 입력 조건 모두 화면을 100Hz로 갱신했다. 영상 입력이 52fps에서 24fps로
+줄자 새 추론 결과가 들어오는 간격도 길어졌다. 새 결과가 들어오기 전에는 마지막으로 받은 결과를
+다시 표시했다.
+
+`프레임 입력→결과 사용`은 추론에 넣은 프레임이 브라우저에 들어온 뒤 그 결과를 화면 그리기에 쓸
+때까지 지난 시간이다.
+
+| 실제 입력 속도 | 프레임 입력 간격 평균 | 프레임 입력→결과 사용 p95 | 같은 결과를 다시 쓴 비율 |
+| -------------- | --------------------: | ------------------------: | -----------------------: |
+| 약 52fps       |          19.0\~19.2ms |              30.6\~30.8ms |              47.7\~49.3% |
+| 약 24fps       |             약 41.0ms |              51.0\~51.1ms |                 약 75.5% |
+
+24fps에서는 화면 갱신 네 번 가운데 약 세 번이 마지막으로 받은 추론 결과를 다시 썼다. `프레임
+입력→결과 사용` p95는 약 31ms에서 51ms로 늘었고 rAF miss는 0\~0.20%였다.
+
+31ms와 51ms는 입력 프레임 시각부터 MobileNet 분류 결과를 렌더 루프에서 선택한 시각까지 지난
+시간이다.
+
+## 오버레이와 WebGPU 추론을 함께 실행해도 100Hz 화면 갱신을 유지했다
+
+점 이동 경로와 스켈레톤을 각각 한 번의 draw call로 그렸을 때 `frameCpuMs` p95는 0.4ms
+이하였고 rAF miss는 0%였다. MobileNet v2를 WebGPU로 함께 실행해도 CPU 시간과 rAF miss는
+늘지 않았다. 포화 조건에서는 WebGL GPU 시간이 0.096\~0.160ms 늘었지만 0.5ms 판정 기준보다
+작았다.
+
+카메라 영상을 HTML video로 표시한 방식은 `VideoTexture`로 그린 방식보다 `renderCpuMs` p95가
+0.3\~0.5ms 짧았다. 두 방법 모두 rAF miss는 0%였다.
+
+영상 입력이 52fps에서 24fps로 줄어도 렌더 시간은 늘지 않았고 rAF miss는 0\~0.20%였다. 대신
+`프레임 입력→결과 사용` p95는 약 31ms에서 51ms로 늘었고, 같은 결과를 다시 쓴 비율은 약
+49%에서 76%로 늘었다. 52fps 입력에서는 새 MobileNet 결과가 약 20ms마다 나왔고, 24fps
+입력에서는 약 40ms마다 나왔다. 화면은 두 조건에서 모두 약 10ms마다 갱신했다.
+
+## 다음 할 일
+
+Three.js로 점과 선을 표시하면서 WebGPU 추론을 실행하면 화면 갱신이 늦어질 것으로 예상했지만,
+이번 조건에서는 눈에 띄는 차이가 없었다.
+
+다음에는 MediaPipe Hand Landmarker가 만든 손 좌표를 Three.js 오버레이에 직접 연결한다. 손
+좌표가 늦게 표시될 때 프레임 전달, 모델 추론, 좌표 전달, 렌더 제출 가운데 어느 구간에서 시간이
+많이 걸리는지 확인한다. 프레임 ID와 촬영 시각으로 각 구간을 연결하고, 같은 좌표를 다시 쓴
+비율과 영상에서 보이는 손에 좌표가 맞는지도 확인한다. 결과를 바탕으로 처리 시간을 먼저 줄일
+구간을 정한다.
+
+## 참고 자료
+
+- [Three.js `BufferGeometry`](https://threejs.org/docs/pages/BufferGeometry.html)
+- [Three.js `BufferAttribute`](https://threejs.org/docs/pages/BufferAttribute.html)
+- [Three.js `VideoTexture`](https://threejs.org/docs/pages/VideoTexture.html)
+- [MDN: `requestAnimationFrame`](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame)
+- [MDN: `requestVideoFrameCallback`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLVideoElement/requestVideoFrameCallback)
+- [MDN: `EXT_disjoint_timer_query`](https://developer.mozilla.org/en-US/docs/Web/API/EXT_disjoint_timer_query)

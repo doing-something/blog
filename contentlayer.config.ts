@@ -1,5 +1,5 @@
 import { defineDocumentType, makeSource } from 'contentlayer/source-files'
-// import remarkGfm from 'remark-gfm'
+import remarkGfm from 'remark-gfm'
 import rehypeSlug from 'rehype-slug'
 import readingTime from 'reading-time'
 
@@ -30,7 +30,7 @@ export default makeSource({
   contentDirPath: 'content',
   documentTypes: [Post],
   mdx: {
-    // remarkPlugins: [remarkGfm],
+    remarkPlugins: [remarkGfm],
     rehypePlugins: [rehypeSlug],
   },
 })
